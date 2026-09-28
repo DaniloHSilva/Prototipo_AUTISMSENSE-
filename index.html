@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutismSense IoT - Simulador Embarcado (ESP32)</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<header>
+  <div class="logo">🔌</div>
+  <div>
+    <h1>Simulador Embarcado — AutismSense IoT</h1>
+    <div class="sub">Emula o firmware do dispositivo: leitura dos sensores → processamento → envio via HTTP ao Supabase</div>
+  </div>
+  <nav>
+    <a href="dashboard.html">📊 Dashboard</a>
+    <a href="simulador.html">🔌 Simulador Embarcado</a>
+  </nav>
+</header>
+<main>
+  <div class="banner" id="banner">⚠️ Conexão com o Supabase não configurada. Edite <b>js/config.js</b> com a URL e a anon key do seu projeto.</div>
+
+  <div class="grid cards">
+    <div class="card"><div class="lbl">🔊 Ruído (microfone)</div><div class="val" id="sRuido">-- <span class="unit">dB</span></div></div>
+    <div class="card"><div class="lbl">💡 Luminosidade</div><div class="val" id="sLux">-- <span class="unit">lux</span></div></div>
+    <div class="card"><div class="lbl">🌡️ Temperatura</div><div class="val" id="sTemp">-- <span class="unit">°C</span></div></div>
+    <div class="card"><div class="lbl">💧 Umidade</div><div class="val" id="sUmid">-- <span class="unit">%</span></div></div>
+  </div>
+
+  <div class="grid cards" style="margin-top:16px">
+    <div class="card">
+      <h2>🎚️ Cenário do ambiente escolar</h2>
+      <div class="slider-row"><span>Silêncio</span><input type="range" id="cenaRuido" min="35" max="90" value="55"><span>Muita agitação</span></div>
+      <div class="slider-row" style="margin-top:10px"><span>Escuro</span><input type="range" id="cenaLux" min="0" max="1000" value="400"><span>Claro</span></div>
+      <div class="slider-row" style="margin-top:10px"><span>Frio</span><input type="range" id="cenaTemp" min="14" max="36" value="24"><span>Quente</span></div>
+      <p class="note" style="margin-top:12px">Ajuste os deslizadores para simular diferentes momentos da rotina escolar (aula, recreio, atividade em grupo etc.). O simulador adiciona ruído aleatório realista a cada leitura.</p>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="btnStart">▶ Iniciar envio</button>
+        <button class="btn danger" id="btnStop" disabled>⏹ Parar</button>
+        <label class="note"><input type="checkbox" id="chkMic"> usar microfone real para o ruído</label>
+      </div>
+    </div>
+    <div class="card">
+      <div class="term-head"><h2>📟 "Console serial" do dispositivo</h2><span class="status"><span class="dot" id="dotSim"></span><span id="txtSim">parado</span></span></div>
+      <div class="terminal" id="term"><div>[boot] AutismSense firmware v0.1 — ESP32-SIM-01</div>
+<div>[boot] Sensores: MAX9814(ruído) • BH1750(lux) • DHT22(temp/umid)</div>
+<div>[boot] WiFi conectado • endpoint: /rest/v1/leituras</div></div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:20px">
+	Ao clicar em ▶ Iniciar envio, o simulador:
+Gera uma leitura dos 4 sensores (ruído, lux, temperatura, umidade) — usando os valores dos deslizadores + variação aleatória (e o microfone real, se marcado).
+Mostra os valores nos cards e escreve no "console serial" do dispositivo.
+Insere no Supabase: faz um POST na tabela leituras com esses dados.
+
+
+  </p>
+</main>
+<footer>AutismSense IoT • Projeto Integrador VI • UNIVESP 2026</footer>
+
+<script src="js/config.js"></script>
+<script>
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+if (!SUPABASE_URL.includes(".supabase.co")) $("banner").style.display = "block";
+const log = m => { const t=$("term"); t.innerHTML += `<div>${new Date().toLocaleTimeString("pt-BR")} ${m}</div>`; t.scrollTop = t.scrollHeight; };
+
+/* ---- Estado "físico" do dispositivo (random walk realista) ---- */
+const dev = { ruido:55, lux:400, temp:24, umid:55 };
+let timer = null, micLevel = null, micStream = null;
+
+function rnd(a,b){ return a + Math.random()*(b-a); }
+function clamp(v,a,b){ return Math.min(b, Math.max(a,v)); }
+
+/* Microfone real (opcional): converte RMS em dB aproximado */
+let analyser;
+async function ligarMic(){
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    analyser = ctx.createAnalyser(); analyser.fftSize = 512;
+    ctx.createMediaStreamSource(micStream).connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+    setInterval(()=>{ analyser.getByteTimeDomainData(buf);
+      let s=0; for(const v of buf){const d=(v-128)/128; s+=d*d;}
+      const rms = Math.sqrt(s/buf.length);
+      micLevel = clamp(20*Math.log10(rms+1e-6)+96, 30, 100); // ~dB SPL estimado
+    },200);
+    log("[sensor] microfone real habilitado para ruído");
+  }catch(e){ log("[sensor] microfone indisponível: "+e.message); $("chkMic").checked=false; }
+}
+
+function lerSensores(){
+  const alvoRuido = parseFloat($("cenaRuido").value);
+  const alvoLux   = parseFloat($("cenaLux").value);
+  const alvoTemp  = parseFloat($("cenaTemp").value);
+  dev.ruido = clamp(dev.ruido*0.7 + alvoRuido*0.3 + rnd(-3,3), 30, 100);
+  dev.lux   = clamp(dev.lux*0.7   + alvoLux*0.3   + rnd(-25,25), 0, 1200);
+  dev.temp  = clamp(dev.temp*0.8  + alvoTemp*0.2  + rnd(-0.2,0.2), 10, 40);
+  dev.umid  = clamp(dev.umid*0.9  + rnd(-0.6,0.6), 25, 90);
+  const ruido = $("chkMic").checked && micLevel!==null ? micLevel : dev.ruido;
+  return {
+    dispositivo: DISPOSITIVO_ID,
+    ruido_db: +ruido.toFixed(1),
+    lux: +dev.lux.toFixed(0),
+    temperatura: +dev.temp.toFixed(1),
+    umidade: +dev.umid.toFixed(0)
+  };
+}
+
+async function publicar(){
+  const leitura = lerSensores();
+  $("sRuido").innerHTML = leitura.ruido_db+' <span class="unit">dB</span>';
+  $("sLux").innerHTML   = leitura.lux+' <span class="unit">lux</span>';
+  $("sTemp").innerHTML  = leitura.temperatura+' <span class="unit">°C</span>';
+  $("sUmid").innerHTML  = leitura.umidade+' <span class="unit">%</span>';
+  log(`[leitura] ruido=${leitura.ruido_db}dB lux=${leitura.lux} temp=${leitura.temperatura}°C umid=${leitura.umidade}%`);
+  const {error} = await sb.from(TABELA_LEITURAS).insert(leitura);
+  if (error) log(`[http] ❌ erro: ${error.message} (verifique a tabela e as políticas RLS)`);
+  else log(`[http] ✅ POST /leituras → 201 Created (${INTERVALO_ENVIO_MS/1000}s)`);
+}
+
+$("btnStart").onclick = () => {
+  if (timer) return;
+  if ($("chkMic").checked && !analyser) ligarMic();
+  timer = setInterval(publicar, INTERVALO_ENVIO_MS);
+  $("dotSim").className = "dot on"; $("txtSim").textContent = "enviando…";
+  $("btnStart").disabled = true; $("btnStop").disabled = false;
+  log(`[task] loop de envio iniciado (intervalo ${INTERVALO_ENVIO_MS} ms)`);
+  publicar();
+};
+$("btnStop").onclick = () => {
+  clearInterval(timer); timer = null;
+  if (micStream){ micStream.getTracks().forEach(t=>t.stop()); analyser=null; micStream=null; }
+  $("dotSim").className = "dot"; $("txtSim").textContent = "parado";
+  $("btnStart").disabled = false; $("btnStop").disabled = true;
+  log("[task] loop de envio encerrado");
+};
+</script>
+</body>
+</html>

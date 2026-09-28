@@ -1,0 +1,9 @@
+create table leituras (
+  id bigint generated always as identity primary key,
+  dispositivo text default 'ESP32-SIM-01',
+  ruido_db real,
+  lux real,
+  temperatura real,
+  umidade real,
+  criado_em timestamptz default now()
+);

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutismSense IoT - Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="logo">🧩</div>
+  <div>
+    <h1>AutismSense IoT</h1>
+    <div class="sub">Monitoramento ambiental para conforto sensorial em ambiente escolar</div>
+  </div>
+  <nav>
+    <a href="dashboard.html">📊 Dashboard</a>
+    <a href="simulador.html">🔌 Simulador Embarcado</a>
+  </nav>
+</header>
+<main>
+  <div class="banner" id="banner">⚠️ Conexão com o Supabase não configurada. Edite <b>js/config.js</b> com a URL e a anon key do seu projeto.</div>
+
+  <div class="row" style="margin-bottom:18px;justify-content:space-between">
+    <div class="status"><span class="dot" id="dotConn"></span><span id="txtConn">Conectando…</span></div>
+    <div class="row">
+      <button class="btn sec" id="btnAtualizar">🔄 Atualizar</button>
+      <select id="limite" style="background:var(--bg2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px">
+        <option value="50">Últimas 50 leituras</option>
+        <option value="200" selected>Últimas 200 leituras</option>
+        <option value="500">Últimas 500 leituras</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid cards" id="cards">
+    <div class="card"><div class="lbl">🔊 Nível de ruído</div><div class="val" id="vRuido">-- <span class="unit">dB</span></div><div class="badge b-ok" id="bRuido">—</div></div>
+    <div class="card"><div class="lbl">💡 Luminosidade</div><div class="val" id="vLux">-- <span class="unit">lux</span></div><div class="badge b-ok" id="bLux">—</div></div>
+    <div class="card"><div class="lbl">🌡️ Temperatura</div><div class="val" id="vTemp">-- <span class="unit">°C</span></div><div class="badge b-ok" id="bTemp">—</div></div>
+    <div class="card"><div class="lbl">💧 Umidade</div><div class="val" id="vUmid">-- <span class="unit">%</span></div><div class="badge b-ok" id="bUmid">—</div></div>
+  </div>
+
+  <div class="card chart-card">
+    <h2>📈 Histórico das variáveis ambientais</h2>
+    <canvas id="chart" height="110"></canvas>
+  </div>
+
+  <div class="grid cards" style="margin-top:16px">
+    <div class="card">
+      <h2>⚙️ Parâmetros de sinalização</h2>
+      <p class="note" style="margin-bottom:12px">Parâmetros informativos e configuráveis — <b>não</b> são limites universais de conforto para pessoas com TEA. As respostas aos estímulos variam entre indivíduos e devem ser avaliadas no contexto.</p>
+      <div class="row">
+        <label>Ruído (dB) &gt; <input type="number" id="limRuido" value="65"></label>
+        <label>Lux mín. <input type="number" id="limLux" value="150"></label>
+        <label>Temp. (°C) fora de <input type="number" id="limTempMin" value="18" style="width:70px">–<input type="number" id="limTempMax" value="30" style="width:70px"></label>
+        <label>Umidade (%) fora de <input type="number" id="limUmidMin" value="40" style="width:70px">–<input type="number" id="limUmidMax" value="70" style="width:70px"></label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🕒 Últimas leituras</h2>
+      <table><thead><tr><th>Horário</th><th>Ruído</th><th>Lux</th><th>Temp</th><th>Umid</th></tr></thead>
+      <tbody id="tbody"><tr><td colspan="5" class="note">Aguardando dados…</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:20px">
+    📌 <b>Aviso importante:</b> o AutismSense IoT tem caráter exclusivamente informativo. Ele não realiza diagnóstico, não substitui avaliação profissional e não estabelece relação causal entre uma leitura ambiental isolada e o comportamento de uma pessoa. Dados coletados são ambientais (não clínicos) e tratados conforme a LGPD.
+  </p>
+</main>
+<footer>AutismSense IoT • Projeto Integrador VI • UNIVESP 2026</footer>
+
+<script src="js/config.js"></script>
+<script>
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+if (!SUPABASE_URL.includes(".supabase.co")) $("banner").style.display = "block";
+
+function lim(id){ return parseFloat($(id).value); }
+function badge(el, nivel){
+  const map = {ok:["b-ok","Dentro do parâmetro"], warn:["b-warn","Atenção"], alert:["b-alert","Fora do parâmetro"]};
+  const [cls,txt] = map[nivel];
+  el.className = "badge " + cls; el.textContent = txt;
+}
+function avaliar(l){
+  badge($("bRuido"), l.ruido_db > lim("limRuido") ? "alert" : "ok");
+  badge($("bLux"),   l.lux < lim("limLux") ? "warn" : "ok");
+  badge($("bTemp"),  (l.temperatura < lim("limTempMin") || l.temperatura > lim("limTempMax")) ? "alert" : "ok");
+  badge($("bUmid"),  (l.umidade < lim("limUmidMin") || l.umidade > lim("limUmidMax")) ? "warn" : "ok");
+}
+let chart;
+function montarGrafico(rows){
+  const labels = rows.map(r => new Date(r.criado_em).toLocaleTimeString("pt-BR"));
+  const ds = (lbl,data,color,ax="y") => ({label:lbl,data,borderColor:color,backgroundColor:color+"22",tension:.35,yAxisID:ax,pointRadius:0,borderWidth:2,fill:true});
+  if (chart) chart.destroy();
+  chart = new Chart($("chart"), {type:"line", data:{labels, datasets:[
+    ds("Ruído (dB)", rows.map(r=>r.ruido_db), "#ff5d7a", "y1"),
+    ds("Lux", rows.map(r=>r.lux), "#ffb454"),
+    ds("Temperatura (°C)", rows.map(r=>r.temperatura), "#5b8cff", "y1"),
+    ds("Umidade (%)", rows.map(r=>r.umidade), "#37d0a2", "y1"),
+  ]}, options:{responsive:true, interaction:{mode:"index",intersect:false},
+    scales:{y:{type:"linear",position:"left",title:{display:true,text:"lux"},grid:{color:"#24305c"}},
+            y1:{type:"linear",position:"right",title:{display:true,text:"dB / °C / %"},grid:{display:false}},
+            x:{grid:{color:"#24305c"}}},
+    plugins:{legend:{labels:{color:"#e8ecf8"}}}}});
+}
+async function carregar(){
+  const n = parseInt($("limite").value);
+  const {data, error} = await sb.from(TABELA_LEITURAS).select("*").order("criado_em",{ascending:false}).limit(n);
+  if (error){ $("txtConn").textContent = "Erro: " + error.message; return; }
+  const rows = (data||[]).slice().reverse();
+  if (!rows.length){ $("txtConn").textContent = "Conectado — aguardando leituras do simulador…"; $("dotConn").className="dot on"; return; }
+  $("dotConn").className = "dot on";
+  $("txtConn").textContent = `Conectado • ${new Date(rows[rows.length-1].criado_em).toLocaleString("pt-BR")}`;
+  const last = rows[rows.length-1];
+  $("vRuido").innerHTML = last.ruido_db.toFixed(1)+' <span class="unit">dB</span>';
+  $("vLux").innerHTML   = last.lux.toFixed(0)+' <span class="unit">lux</span>';
+  $("vTemp").innerHTML  = last.temperatura.toFixed(1)+' <span class="unit">°C</span>';
+  $("vUmid").innerHTML  = last.umidade.toFixed(0)+' <span class="unit">%</span>';
+  avaliar(last);
+  montarGrafico(rows);
+  $("tbody").innerHTML = rows.slice(-12).reverse().map(r=>`<tr>
+    <td>${new Date(r.criado_em).toLocaleTimeString("pt-BR")}</td>
+    <td>${r.ruido_db.toFixed(1)} dB</td><td>${r.lux.toFixed(0)} lux</td>
+    <td>${r.temperatura.toFixed(1)} °C</td><td>${r.umidade.toFixed(0)} %</td></tr>`).join("");
+}
+["limRuido","limLux","limTempMin","limTempMax","limUmidMin","limUmidMax"].forEach(id=>$(id).oninput=carregar);
+$("btnAtualizar").onclick = carregar;
+$("limite").onchange = carregar;
+sb.channel("rt").on("postgres_changes",{event:"INSERT",schema:"public",table:TABELA_LEITURAS},()=>carregar()).subscribe();
+carregar();
+</script>
+</body>
+</html>
