@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutismSense IoT - Entrar</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<base target="_blank">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="logo">🧩</div>
+    <h1>AutismSense IoT</h1>
+    <div class="sub">Monitoramento ambiental para conforto sensorial em ambiente escolar</div>
+
+    <div class="banner" id="banner" style="margin:0 0 6px">⚠️ Conexão com o Supabase não configurada. Edite <b>js/config.js</b>.</div>
+
+    <form id="formLogin">
+      <label for="email">E-mail</label>
+      <input type="email" id="email" required placeholder="voce@escola.edu.br" autocomplete="username">
+      <label for="senha">Senha</label>
+      <input type="password" id="senha" required placeholder="••••••••" autocomplete="current-password">
+      <button class="btn" type="submit" id="btnSubmit">🔐 Entrar</button>
+    </form>
+
+    <div class="login-msg" id="msg"></div>
+
+    <div class="switch">
+      <span id="switchTxt">Ainda não tem acesso?</span>
+      <a id="switchLink">Criar conta</a>
+    </div>
+
+    <p class="note" style="margin-top:18px;text-align:center">
+      Acesso restrito a profissionais da comunidade escolar, conforme a
+      política de proteção de dados (LGPD). Os dados monitorados são
+      ambientais, não clínicos.
+    </p>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script>
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (!SUPABASE_URL.includes(".supabase.co")) document.getElementById("banner").style.display = "block";
+
+let modo = "login"; // "login" | "cadastro"
+const $ = id => document.getElementById(id);
+const msg = (t, ok=false) => { const m=$("msg"); m.className = "login-msg "+(ok?"ok":"err"); m.textContent = t; };
+
+$("switchLink").onclick = () => {
+  modo = modo === "login" ? "cadastro" : "login";
+  $("btnSubmit").textContent = modo === "login" ? "🔐 Entrar" : "✨ Criar conta";
+  $("switchTxt").textContent = modo === "login" ? "Ainda não tem acesso?" : "Já possui acesso?";
+  $("switchLink").textContent = modo === "login" ? "Criar conta" : "Entrar";
+  $("msg").className = "login-msg";
+};
+
+// Já logado? Vai direto ao dashboard.
+sb.auth.getSession().then(({data}) => { if (data.session) location.href = "dashboard.html"; });
+
+$("formLogin").onsubmit = async (e) => {
+  e.preventDefault();
+  $("btnSubmit").disabled = true;
+  const email = $("email").value.trim(), password = $("senha").value;
+  let error;
+  if (modo === "login") {
+    ({error} = await sb.auth.signInWithPassword({email, password}));
+  } else {
+    ({error} = await sb.auth.signUp({email, password}));
+  }
+  $("btnSubmit").disabled = false;
+  if (error) {
+    msg(modo === "cadastro" && error.message.includes("already")
+      ? "Este e-mail já está cadastrado. Use a opção Entrar."
+      : "Falha na autenticação: " + error.message);
+    return;
+  }
+  if (modo === "cadastro") {
+    msg("Conta criada! Se o Supabase exigir confirmação de e-mail, confirme antes de entrar.", true);
+    modo = "login";
+    $("btnSubmit").textContent = "🔐 Entrar";
+    return;
+  }
+  location.href = "dashboard.html";
+};
+</script>
+</body>
+</html>
