@@ -5,11 +5,11 @@
    2. Em Settings > API, copie:
       - Project URL      -> SUPABASE_URL
       - anon public key  -> SUPABASE_ANON_KEY
-   3. Cole abaixo e abra o dashboard.html e o simulador.html
+   3. Cole abaixo e abra login.html
    ============================================================ */
 
-const SUPABASE_URL = "https://sbgpbipcfyqkwwshxdlv.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNiZ3BiaXBjZnlxa3d3c2h4ZGx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDM3MTAsImV4cCI6MjEwNTExOTcxMH0.FCIPijkat-_Nbq4WM4RHtNq5s-7jPe1eXmKnBzox0BQ";
+const SUPABASE_URL = "https://mdeettkvwkopovadlcss.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kZWV0dGt2d2tvcG92YWRsY3NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMTgyMzksImV4cCI6MjEwNjg5NDIzOX0.-JidQ9dQ92FkFbpoGDTjFW4YWlaBJgKzxm83Sa3wjYg";
 
 /* Nome da tabela de leituras (deve existir no banco - ver LEIA-ME.md) */
 const TABELA_LEITURAS = "leituras";
